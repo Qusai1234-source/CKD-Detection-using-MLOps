@@ -1,8 +1,10 @@
 import pandas as pd
+import tensorflow as tf
 import os
 from sklearn.model_selection import train_test_split
 from log import get_logger
-from tensorflow.keras.image import image_dataset_from_directory
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+
 
 logger=get_logger("data_Ingestion")
 
@@ -23,7 +25,7 @@ def validate_data(file_path):
             logger.debug("Images not found.")
             raise Exception("Dataset has no images.")
     
-    logger.debug("Dataset Validation Successful. Classes found:{classes}")
+    logger.debug(f"Dataset Validation Successful. Classes found:{classes}")
 
 def load_data(file_path):
 
@@ -52,3 +54,8 @@ def load_data(file_path):
     logger.debug("Image Datasets created successfully.")
     return train_ds,val_ds
 
+if __name__=="__main__":
+    file_path=r"C:\projects\CKD-Detection-using-MLOps\Data\CT-KIDNEY-DATASET-Normal-Cyst-Tumor-Stone"
+    validate_data(file_path=file_path)
+    train_ds,val_ds=load_data(file_path)
+    print(len(train_ds),len(val_ds))

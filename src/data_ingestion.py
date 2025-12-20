@@ -27,7 +27,7 @@ def validate_data(file_path):
     
     logger.debug(f"Dataset Validation Successful. Classes found:{classes}")
 
-def load_data(file_path):
+def load_data(file_path=r"C:\projects\CKD-Detection-using-MLOps\Data\CT-KIDNEY-DATASET-Normal-Cyst-Tumor-Stone"):
 
     logger.debug("Starting Image Data Ingestion.")
 

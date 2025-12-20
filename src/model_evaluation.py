@@ -1,38 +1,30 @@
 import os
 import numpy as np
 import tensorflow as tf
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    accuracy_score
-)
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from log import get_logger
 from data_ingestion import load_data
 from preprocessing import preprocess
 
-logger = get_logger("model_evaluation")
+logger = get_logger("custom_cnn_evaluation")
 
-ARTIFACTS_DIR = "artifacts"
-EVAL_DIR = os.path.join(ARTIFACTS_DIR, "evaluation")
+MODEL_PATH = "artifacts/custom_cnn/best_model"
+EVAL_DIR = "artifacts/evaluation"
 os.makedirs(EVAL_DIR, exist_ok=True)
 
 CLASS_NAMES = ["Cyst", "Normal", "Stone", "Tumor"]
-MODELS = ["Xception", "ResNet50", "MobileNetV2", "CustomCNN"]
 
 
-def evaluate_model(model_name, val_ds):
-    logger.info(f"Evaluating model: {model_name}")
+def evaluate_custom_cnn(val_ds):
+    logger.info("Evaluating Custom CNN model")
 
-    model_path = os.path.join(ARTIFACTS_DIR, model_name, "best_model")
-    if not os.path.exists(model_path):
-        logger.error(f"Model not found: {model_path}")
-        return
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
 
-    model = tf.keras.models.load_model(model_path)
-    logger.info(f"Loaded model from {model_path}")
+    model = tf.keras.models.load_model(MODEL_PATH)
+    logger.info(f"Loaded model from {MODEL_PATH}")
 
-    y_true = []
-    y_pred = []
+    y_true, y_pred = [], []
 
     for images, labels in val_ds:
         preds = model.predict(images, verbose=0)
@@ -41,19 +33,19 @@ def evaluate_model(model_name, val_ds):
         y_true.extend(labels.numpy())
         y_pred.extend(preds)
 
-    # Metrics
     acc = accuracy_score(y_true, y_pred)
     cm = confusion_matrix(y_true, y_pred)
     report = classification_report(
         y_true, y_pred, target_names=CLASS_NAMES
     )
 
-    logger.info(f"{model_name} Accuracy: {acc:.4f}")
+    logger.info(f"Custom CNN Accuracy: {acc:.4f}")
+    logger.info("\n" + report)
+    logger.info("\nConfusion Matrix:\n" + str(cm))
 
-    # Save report
-    report_path = os.path.join(EVAL_DIR, f"{model_name}_report.txt")
+    report_path = os.path.join(EVAL_DIR, "custom_cnn_report.txt")
     with open(report_path, "w") as f:
-        f.write(f"Model: {model_name}\n\n")
+        f.write(f"Model: Custom CNN\n")
         f.write(f"Accuracy: {acc:.4f}\n\n")
         f.write("Classification Report:\n")
         f.write(report)
@@ -64,17 +56,16 @@ def evaluate_model(model_name, val_ds):
 
 
 if __name__ == "__main__":
-    logger.info("Starting model evaluation pipeline")
+    logger.info("Starting Custom CNN evaluation")
 
-    _, val_ds = load_data()
+    _, raw_val_ds = load_data()
 
     val_ds = preprocess(
-        val_ds,
-        augment=False,
-        balance=False
+        dataset=raw_val_ds,
+        model_name="custom_cnn",
+        augment=False
     )
 
-    for model_name in MODELS:
-        evaluate_model(model_name, val_ds)
+    evaluate_custom_cnn(val_ds)
 
-    logger.info("Model evaluation completed successfully")
+    logger.info("Custom CNN evaluation completed")

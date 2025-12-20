@@ -1,81 +1,74 @@
-import cv2
-import os
-from log import get_logger
-from tensorflow.keras.layers import Rescaling 
 import tensorflow as tf
-from collections import Counter
-logger=get_logger("Preprocessing")
-def normalize_data(train_ds,val_ds):
-    logger.debug("Normalizing train_ds and val_ds")
-    normalization_layer=Rescaling(1./255)
+import numpy as np
+from tensorflow.keras.applications import (
+    xception,
+    resnet50,
+    mobilenet_v2
+)
+from log import get_logger
 
-    train_ds=train_ds.map(lambda x,y:(normalization_layer(x),y))
-    val_ds=val_ds.map(lambda x,y:(normalization_layer(x),y))
+logger = get_logger("preprocessing")
 
-    logger("Prefetching dataset")
-    AUTOTUNE=tf.data.AUTOTUNE
-    train_ds=train_ds.prefetch(buffer_size=AUTOTUNE)
-    val_ds=val_ds.prefetch(buffer_size=AUTOTUNE)
+IMAGE_SIZE = (224, 224)
+BATCH_SIZE = 32
 
-    logger("Normalization and prefetching applied.")
-    return train_ds,val_ds
 
-def augment_data(dataset):
-    aug_layer=tf.keras.Sequential([
+def get_preprocess_fn(model_name):
+    if model_name == "Xception":
+        logger.info("Using Xception preprocessing")
+        return xception.preprocess_input
+
+    elif model_name == "ResNet50":
+        logger.info("Using ResNet50 preprocessing")
+        return resnet50.preprocess_input
+
+    elif model_name == "MobileNetV2":
+        logger.info("Using MobileNetV2 preprocessing")
+        return mobilenet_v2.preprocess_input
+
+    else:
+        logger.info("Using Custom CNN preprocessing")
+        return lambda x: tf.cast(x, tf.float32) / 255.0
+
+
+def augmentation_layer():
+    return tf.keras.Sequential([
         tf.keras.layers.RandomFlip("horizontal"),
         tf.keras.layers.RandomRotation(0.1),
-        tf.keras.layers.RandomZoom(0.1),
+        tf.keras.layers.RandomZoom(0.15),
         tf.keras.layers.RandomContrast(0.1)
     ])
-    dataset=dataset.map(lambda x,y:(aug_layer(x,training=True),y),num_parallel_calls=tf.data.AUTOTUNE)
-    return dataset
 
-def count_classes(dataset):
 
-    counter=Counter()
-    for _,label in dataset:
-        counter[int(label.numpy())]+=1
-    logger.debug(f"Class Distribution before balancing:{dict(counter)}")
-    return counter
+def sanity_check(dataset, name="dataset"):
+    images, labels = next(iter(dataset.take(1)))
 
-def upsample(dataset):
+    mean = tf.reduce_mean(images)
+    std = tf.math.reduce_std(images)
 
-    logger.debug("Starting Upsampling.")
-    class_counts=count_classes(dataset)
-    max_count=max(class_counts.values())
+    logger.info(f"{name} mean: {mean.numpy():.4f}")
+    logger.info(f"{name} std: {std.numpy():.4f}")
 
-    class_datasets=[]
-    for class_id,count in class_counts.items():
-        repeat_factor=max_count//count
+    unique, counts = np.unique(labels.numpy(), return_counts=True)
+    class_dist = dict(zip(unique, counts))
+    logger.info(f"{name} class distribution (sample): {class_dist}")
 
-        class_ds=dataset.filter(lambda x,y:y==class_id)
-        class_ds=class_ds.repeat(repeat_factor)
-        class_datasets.append(class_ds)
-    balanced_ds=class_datasets[0]
-    for ds in class_datasets[1:]:
-        balanced_ds=balanced_ds.concatenate(ds)
+
+def preprocess(dataset,model_name,augment=False):
     
-    logger.debug("Sampling completed.")
-    return balanced_ds
+    preprocess_fn = get_preprocess_fn(model_name)
 
-def preprocess_image(image,label):
-    image=tf.cast(image,tf.float32)
-    image=image/255.0
-    return image,label
-
-def preprocess(dataset,augment=False,balance=False):
-
-    logger.debug("Starting Preprocessing.")
-
-    dataset=dataset.unbatch()
-    if balance:
-        balanced_ds=upsample(dataset)
-    dataset=balanced_ds.shuffle(1000)
+    dataset = dataset.map(
+        lambda x, y: (preprocess_fn(x), y),
+        num_parallel_calls=tf.data.AUTOTUNE
+    )
 
     if augment:
-        dataset=augment_data(dataset)
-    dataset=dataset.batch(32)
-    dataset=dataset.prefetch(tf.data.AUTOTUNE)
+        aug = augmentation_layer()
+        dataset = dataset.map(
+            lambda x, y: (aug(x, training=True), y),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
 
-    logger.debug("preprocessing completed.")
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
     return dataset
